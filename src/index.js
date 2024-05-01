@@ -4,6 +4,7 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const UserModel = require("./model/user");
 const UserLogs = require("./model/userLogs");
+const uploadImages = require("./helper/Cloudinary");
 
 app.use(cors());
 app.use(express.json());
@@ -69,7 +70,7 @@ app.post("/logout", async (req, res) => {
 });
 app.post("/entry", async (req, res) => {
   // Extract necessary data from the request body
-  const { username, password, latitude, longitude } = req.body;
+  const { username, password, latitude, longitude, img } = req.body;
 
   try {
     // Check if the user already exists
@@ -79,11 +80,22 @@ app.post("/entry", async (req, res) => {
       res.status(400).send({ message: "User already exists" });
       return;
     }
+    let user_img;
+    if (img?.length > 0) {
+      await uploadImages(img)
+        .then((uploadedUrls) => {
+          user_img = JSON.stringify(uploadedUrls);
+        })
+        .catch((error) => {
+          console.error("Error uploading images:", error.message);
+        });
+    }
 
     // Create a new user with registration details
     user = new UserModel({
       username,
       password,
+      img: user_img,
     });
 
     await user.save();
