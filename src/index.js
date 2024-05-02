@@ -1,16 +1,15 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
 
 const faceapi = require("face-api.js");
 const { Canvas, Image } = require("canvas");
 const canvas = require("canvas");
-const fileUpload = require("express-fileupload");
 faceapi.env.monkeyPatch({ Canvas, Image });
-const formidable = require("formidable");
 const bodyParser = require("body-parser");
 const multer = require("multer");
-const FaceModel = require("./model/face");
 
 const mongoose = require("mongoose");
 const UserModel = require("./model/user");
@@ -20,8 +19,6 @@ const uploadImages = require("./helper/Cloudinary");
 app.use(cors());
 const upload = multer({ dest: "uploads/" }); // Specify upload directory
 
-// app.use(express.json());
-// app.use(express.urlencoded({ extended: true }));
 app.use(bodyParser.json({ limit: "50mb" }));
 app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
 const port = process.env.PORT || 9002;
@@ -51,7 +48,7 @@ app.post("/login", async (req, res) => {
     delete user.password;
     res.send({
       message: "user login successful",
-      data: { name: username },
+      data: { ...user?._doc },
     });
   } else {
     res.status(404).send({ message: "user not found" });
@@ -60,7 +57,6 @@ app.post("/login", async (req, res) => {
 
 app.post("/logout", async (req, res) => {
   const { userId, latitude, longitude } = req.body;
-
   try {
     const user = await UserModel.findById(userId);
 
@@ -158,14 +154,15 @@ app.get("/logs/:id", async (req, res) => {
   }
 });
 
-let mongodbConnection = "mongodb://localhost:27017/auth";
-// "mongodb+srv://admin:admin@authnode.luyqfyf.mongodb.net/auth?retryWrites=true&w=majority";
+let mongodbConnection =
+  "mongodb+srv://admin:admin@authnode.luyqfyf.mongodb.net/auth?retryWrites=true&w=majority";
 mongoose
   .connect(mongodbConnection)
   .then(() => {
     console.log(`Connected to Database`);
     app.listen(port, () => {
       console.log(`Server is listening at http://localhost:${port}`);
+      LoadModels();
     });
   })
   .catch((err) => console.log("DB ERROR", err));
@@ -177,7 +174,6 @@ async function LoadModels() {
   await faceapi.nets.faceLandmark68Net.loadFromDisk(__dirname + "/../models");
   await faceapi.nets.ssdMobilenetv1.loadFromDisk(__dirname + "/../models");
 }
-LoadModels();
 
 async function uploadLabeledImages(image, data) {
   const { username, password } = data;
@@ -204,10 +200,9 @@ async function uploadLabeledImages(image, data) {
   }
 }
 
-app.post("/post-face", upload.single("File"), async (req, res) => {
+app.post("/post-face", upload.single("file"), async (req, res) => {
   const data = req.body;
   const File = req.file.path;
-
   let result = await uploadLabeledImages(File, data);
   if (result) {
     res.json({ message: "Face data stored successfully" });
@@ -259,13 +254,39 @@ async function getDescriptorsFromDB(image) {
   }
   return null;
 }
+const clearFilesFromDirectory = (directoryPath) => {
+  // Read the directory
+  const items = fs.readdirSync(directoryPath);
 
+  // Iterate over each item
+  items.forEach((item) => {
+    const itemPath = path.join(directoryPath, item);
+
+    // Check if item is a file
+    if (fs.statSync(itemPath).isFile()) {
+      // Delete the file
+      fs.unlinkSync(itemPath);
+      console.log(`Deleted file: ${itemPath}`);
+    }
+  });
+};
 app.post("/check-face", upload.single("File"), async (req, res) => {
   const File = req.file.path;
+  const { lat, long } = req?.body;
   let result = await getDescriptorsFromDB(File);
   if (result) {
+    const loginLog = new UserLogs({
+      userId: result._id,
+      action: "login",
+      timestamp: new Date(),
+      latitude: lat,
+      longitude: long,
+    });
+    await loginLog.save();
+    clearFilesFromDirectory("uploads/");
     res.json({ result });
   } else {
-    res.status(404).send({ message: "usr not found" });
+    clearFilesFromDirectory("uploads/");
+    res.status(404).send({ message: "user not found" });
   }
 });
