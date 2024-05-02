@@ -13,6 +13,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  imgDesc: {
+    type: Array,
+    required: true,
+  },
 });
 
 // Create a model from the schema
