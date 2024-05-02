@@ -176,7 +176,7 @@ async function LoadModels() {
 }
 
 async function uploadLabeledImages(image, data) {
-  const { username, password } = data;
+  const { username, password, lat, long } = data;
   try {
     const img = await canvas.loadImage(image);
     // Read each face and save the face descriptions in the descriptions array
@@ -193,7 +193,16 @@ async function uploadLabeledImages(image, data) {
     });
 
     await createFace.save();
-    return true;
+    // Log the user's initial login in the logs collection
+    const loginLog = new UserLogs({
+      userId: createFace._id,
+      action: "Register",
+      timestamp: new Date(),
+      latitude: lat,
+      longitude: long,
+    });
+    await loginLog.save();
+    return createFace;
   } catch (error) {
     console.log(error);
     return error;
@@ -205,7 +214,7 @@ app.post("/post-face", upload.single("file"), async (req, res) => {
   const File = req.file.path;
   let result = await uploadLabeledImages(File, data);
   if (result) {
-    res.json({ message: "Face data stored successfully" });
+    res.json({ message: "Face data stored successfully", result });
   } else {
     res.json({ message: "Something went wrong, please try again." });
   }
